@@ -15,6 +15,7 @@ package feign;
 
 import feign.Request.HttpMethod;
 import feign.template.*;
+
 import java.io.Serializable;
 import java.net.URI;
 import java.nio.charset.Charset;
@@ -24,6 +25,7 @@ import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
 import static feign.Util.*;
 
 /**
@@ -34,23 +36,26 @@ import static feign.Util.*;
  * </p>
  */
 @SuppressWarnings("UnusedReturnValue")
-public final class RequestTemplate implements Serializable {
 
+//92
+//78 - reducao de 14
+public final class RequestTemplate implements Serializable {
+  //9
   private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
-  private final Map<String, QueryTemplate> queries = new LinkedHashMap<>();
-  private final Map<String, HeaderTemplate> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+  private final Map<String, QueryTemplate> queries = new LinkedHashMap<>(); //1
+  private final Map<String, HeaderTemplate> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER); //1
   private String target;
   private String fragment;
   private boolean resolved = false;
-  private UriTemplate uriTemplate;
-  private BodyTemplate bodyTemplate;
-  private HttpMethod method;
+  private UriTemplate uriTemplate; //1
+  private BodyTemplate bodyTemplate; //1
+  private HttpMethod method; //1
   private transient Charset charset = Util.UTF_8;
-  private Request.Body body = Request.Body.empty();
+  private Request.Body body = Request.Body.empty();  //1
   private boolean decodeSlash = true;
-  private CollectionFormat collectionFormat = CollectionFormat.EXPLODED;
-  private MethodMetadata methodMetadata;
-  private Target<?> feignTarget;
+  private CollectionFormat collectionFormat = CollectionFormat.EXPLODED; //1
+  private MethodMetadata methodMetadata; //1
+  private Target<?> feignTarget; //1
 
   /**
    * Create a new Request Template.
@@ -74,6 +79,7 @@ public final class RequestTemplate implements Serializable {
    * @param feignTarget this template is targeted for.
    * @param methodMetadata containing a reference to the method this template is built from.
    */
+  //2
   private RequestTemplate(String target,
       String fragment,
       UriTemplate uriTemplate,
@@ -94,7 +100,7 @@ public final class RequestTemplate implements Serializable {
     this.body = body;
     this.decodeSlash = decodeSlash;
     this.collectionFormat =
-        (collectionFormat != null) ? collectionFormat : CollectionFormat.EXPLODED;
+        (collectionFormat != null) ? collectionFormat : CollectionFormat.EXPLODED; //2
     this.methodMetadata = methodMetadata;
     this.feignTarget = feignTarget;
   }
@@ -105,6 +111,7 @@ public final class RequestTemplate implements Serializable {
    * @param requestTemplate to copy from.
    * @return a new Request Template.
    */
+  //2
   public static RequestTemplate from(RequestTemplate requestTemplate) {
     RequestTemplate template =
         new RequestTemplate(
@@ -120,11 +127,11 @@ public final class RequestTemplate implements Serializable {
             requestTemplate.methodMetadata,
             requestTemplate.feignTarget);
 
-    if (!requestTemplate.queries().isEmpty()) {
+    if (!requestTemplate.queries().isEmpty()) { //1
       template.queries.putAll(requestTemplate.queries);
     }
 
-    if (!requestTemplate.headers().isEmpty()) {
+    if (!requestTemplate.headers().isEmpty()) { //1
       template.headers.putAll(requestTemplate.headers);
     }
     return template;
@@ -148,7 +155,7 @@ public final class RequestTemplate implements Serializable {
     this.body = toCopy.body;
     this.decodeSlash = toCopy.decodeSlash;
     this.collectionFormat =
-        (toCopy.collectionFormat != null) ? toCopy.collectionFormat : CollectionFormat.EXPLODED;
+        (toCopy.collectionFormat != null) ? toCopy.collectionFormat : CollectionFormat.EXPLODED; //2
     this.uriTemplate = toCopy.uriTemplate;
     this.bodyTemplate = toCopy.bodyTemplate;
     this.resolved = false;
@@ -164,6 +171,7 @@ public final class RequestTemplate implements Serializable {
    * @param variables containing the variable values to use when resolving expressions.
    * @return a new Request Template with all of the variables resolved.
    */
+  //5
   public RequestTemplate resolve(Map<String, ?> variables) {
 
     StringBuilder uri = new StringBuilder();
@@ -171,13 +179,13 @@ public final class RequestTemplate implements Serializable {
     /* create a new template form this one, but explicitly */
     RequestTemplate resolved = RequestTemplate.from(this);
 
-    if (this.uriTemplate == null) {
+    if (this.uriTemplate == null) { //1
       /* create a new uri template using the default root */
       this.uriTemplate = UriTemplate.create("", !this.decodeSlash, this.charset);
     }
 
     String expanded = this.uriTemplate.expand(variables);
-    if (expanded != null) {
+    if (expanded != null) { //1
       uri.append(expanded);
     }
 
@@ -185,63 +193,15 @@ public final class RequestTemplate implements Serializable {
      * for simplicity, combine the queries into the uri and use the resulting uri to seed the
      * resolved template.
      */
-    if (!this.queries.isEmpty()) {
-      /*
-       * since we only want to keep resolved query values, reset any queries on the resolved copy
-       */
-      resolved.queries(Collections.emptyMap());
-      StringBuilder query = new StringBuilder();
-      Iterator<QueryTemplate> queryTemplates = this.queries.values().iterator();
-
-      while (queryTemplates.hasNext()) {
-        QueryTemplate queryTemplate = queryTemplates.next();
-        String queryExpanded = queryTemplate.expand(variables);
-        if (Util.isNotBlank(queryExpanded)) {
-          query.append(queryExpanded);
-          if (queryTemplates.hasNext()) {
-            query.append("&");
-          }
-        }
-      }
-
-      String queryString = query.toString();
-      if (!queryString.isEmpty()) {
-        Matcher queryMatcher = QUERY_STRING_PATTERN.matcher(uri);
-        if (queryMatcher.find()) {
-          /* the uri already has a query, so any additional queries should be appended */
-          uri.append("&");
-        } else {
-          uri.append("?");
-        }
-        uri.append(queryString);
-      }
-    }
+    QueryResolver.resolver(this.queries, variables, resolved, uri); // 1
 
     /* add the uri to result */
     resolved.uri(uri.toString());
 
     /* headers */
-    if (!this.headers.isEmpty()) {
-      /*
-       * same as the query string, we only want to keep resolved values, so clear the header map on
-       * the resolved instance
-       */
-      resolved.headers(Collections.emptyMap());
-      for (HeaderTemplate headerTemplate : this.headers.values()) {
-        /* resolve the header */
-        String header = headerTemplate.expand(variables);
-        if (!header.isEmpty()) {
-          /* split off the header values and add it to the resolved template */
-          String headerValues = header.substring(header.indexOf(" ") + 1);
-          if (!headerValues.isEmpty()) {
-            /* append the header as a new literal as the value has already been expanded. */
-            resolved.header(headerTemplate.getName(), Literal.create(headerValues));
-          }
-        }
-      }
-    }
+    HeaderResolver.resolver(this.headers, variables, resolved); // 1
 
-    if (this.bodyTemplate != null) {
+    if (this.bodyTemplate != null) { //1
       resolved.body(this.bodyTemplate.expand(variables));
     }
 
@@ -274,7 +234,7 @@ public final class RequestTemplate implements Serializable {
    * @throws IllegalStateException if this template has not been resolved.
    */
   public Request request() {
-    if (!this.resolved) {
+    if (!this.resolved) { // 1
       throw new IllegalStateException("template has not been resolved.");
     }
     return Request.create(this.method, this.url(), this.headers(), this.body, this);
@@ -287,12 +247,13 @@ public final class RequestTemplate implements Serializable {
    * @return a RequestTemplate for chaining.
    * @deprecated see {@link RequestTemplate#method(HttpMethod)}
    */
+  //2
   @Deprecated
   public RequestTemplate method(String method) {
     checkNotNull(method, "method");
-    try {
+    try { // 1
       this.method = HttpMethod.valueOf(method);
-    } catch (IllegalArgumentException iae) {
+    } catch (IllegalArgumentException iae) { //1
       throw new IllegalArgumentException("Invalid HTTP Method: " + method);
     }
     return this;
@@ -325,11 +286,12 @@ public final class RequestTemplate implements Serializable {
    * @param decodeSlash if slash literals should not be encoded.
    * @return a RequestTemplate for chaining.
    */
+  // 1
   public RequestTemplate decodeSlash(boolean decodeSlash) {
     this.decodeSlash = decodeSlash;
     this.uriTemplate =
         UriTemplate.create(this.uriTemplate.toString(), !this.decodeSlash, this.charset);
-    if (!this.queries.isEmpty()) {
+    if (!this.queries.isEmpty()) { // 1
       this.queries.replaceAll((key, queryTemplate) -> QueryTemplate.create(
           /* replace the current template with new ones honoring the decode value */
           queryTemplate.getName(), queryTemplate.getValues(), charset, collectionFormat,
@@ -383,10 +345,11 @@ public final class RequestTemplate implements Serializable {
    * @return a RequestTemplate for chaining.
    * @deprecated see {@link RequestTemplate#uri(String, boolean)}
    */
+  // 1
   @Deprecated
   public RequestTemplate append(CharSequence value) {
     /* proxy to url */
-    if (this.uriTemplate != null) {
+    if (this.uriTemplate != null) { // 1
       return this.uri(value.toString(), true);
     }
     return this.uri(value.toString());
@@ -432,19 +395,10 @@ public final class RequestTemplate implements Serializable {
    * @param append if the uri should be appended, if the uri is already set.
    * @return a RequestTemplate for chaining.
    */
+  // 4
   public RequestTemplate uri(String uri, boolean append) {
     /* validate and ensure that the url is always a relative one */
-    if (UriUtils.isAbsolute(uri)) {
-      throw new IllegalArgumentException("url values must be not be absolute.");
-    }
-
-    if (uri == null) {
-      uri = "/";
-    } else if ((!uri.isEmpty() && !uri.startsWith("/") && !uri.startsWith("{")
-        && !uri.startsWith("?") && !uri.startsWith(";"))) {
-      /* if the start of the url is a literal, it must begin with a slash. */
-      uri = "/" + uri;
-    }
+    uri = UriInitial.validate(uri); // 1
 
     /*
      * templates may provide query parameters. since we want to manage those explicity, we will need
@@ -462,15 +416,15 @@ public final class RequestTemplate implements Serializable {
     }
 
     int fragmentIndex = uri.indexOf('#');
-    if (fragmentIndex > -1) {
+    if (fragmentIndex > -1) {  // 1
       fragment = uri.substring(fragmentIndex);
       uri = uri.substring(0, fragmentIndex);
     }
 
     /* replace the uri template */
-    if (append && this.uriTemplate != null) {
+    if (append && this.uriTemplate != null) {  // 1
       this.uriTemplate = UriTemplate.append(this.uriTemplate, uri);
-    } else {
+    } else {  // 1
       this.uriTemplate = UriTemplate.create(uri, !this.decodeSlash, this.charset);
     }
     return this;
@@ -482,39 +436,25 @@ public final class RequestTemplate implements Serializable {
    * @param target host for this request. Must be an absolute target.
    * @return a RequestTemplate for chaining.
    */
+  // 4
   public RequestTemplate target(String target) {
-    /* target can be empty */
-    if (Util.isBlank(target)) {
-      return this;
+
+    Optional<URI> optionalURI = TargetUtil.generateURI(target);// 1
+    if(!optionalURI.isPresent()) return this; // 1
+    final URI targetUri = optionalURI.get();
+
+    if (Util.isNotBlank(targetUri.getRawQuery())) { // 1
+      /*
+       * target has a query string, we need to make sure that they are recorded as queries
+       */
+      this.extractQueryTemplates(targetUri.getRawQuery(), true);
+    }
+    /* strip the query string */
+    this.target = targetUri.getScheme() + "://" + targetUri.getAuthority() + targetUri.getPath();
+    if (targetUri.getFragment() != null) { // 1
+      this.fragment = "#" + targetUri.getFragment();
     }
 
-    /* verify that the target contains the scheme, host and port */
-    if (!UriUtils.isAbsolute(target)) {
-      throw new IllegalArgumentException("target values must be absolute.");
-    }
-    if (target.endsWith("/")) {
-      target = target.substring(0, target.length() - 1);
-    }
-    try {
-      /* parse the target */
-      URI targetUri = URI.create(target);
-
-      if (Util.isNotBlank(targetUri.getRawQuery())) {
-        /*
-         * target has a query string, we need to make sure that they are recorded as queries
-         */
-        this.extractQueryTemplates(targetUri.getRawQuery(), true);
-      }
-
-      /* strip the query string */
-      this.target = targetUri.getScheme() + "://" + targetUri.getAuthority() + targetUri.getPath();
-      if (targetUri.getFragment() != null) {
-        this.fragment = "#" + targetUri.getFragment();
-      }
-    } catch (IllegalArgumentException iae) {
-      /* the uri provided is not a valid one, we can't continue */
-      throw new IllegalArgumentException("Target is not a valid URI.", iae);
-    }
     return this;
   }
 
@@ -524,14 +464,15 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the url
    */
+  // 2
   public String url() {
 
     /* build the fully qualified url with all query parameters */
     StringBuilder url = new StringBuilder(this.path());
-    if (!this.queries.isEmpty()) {
+    if (!this.queries.isEmpty()) { // 1
       url.append(this.queryLine());
     }
-    if (fragment != null) {
+    if (fragment != null) { // 1
       url.append(fragment);
     }
 
@@ -543,16 +484,17 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the uri path.
    */
+  // 3
   public String path() {
     /* build the fully qualified url with all query parameters */
     StringBuilder path = new StringBuilder();
-    if (this.target != null) {
+    if (this.target != null) {  // 1
       path.append(this.target);
     }
-    if (this.uriTemplate != null) {
+    if (this.uriTemplate != null) {  // 1
       path.append(this.uriTemplate.toString());
     }
-    if (path.length() == 0) {
+    if (path.length() == 0) {  // 1
       /* no path indicates the root uri */
       path.append("/");
     }
@@ -565,22 +507,23 @@ public final class RequestTemplate implements Serializable {
    *
    * @return a list of template variable names
    */
+  // 3
   public List<String> variables() {
     /* combine the variables from the uri, query, header, and body templates */
     List<String> variables = new ArrayList<>(this.uriTemplate.getVariables());
 
     /* queries */
-    for (QueryTemplate queryTemplate : this.queries.values()) {
+    for (QueryTemplate queryTemplate : this.queries.values()) {  // 1
       variables.addAll(queryTemplate.getVariables());
     }
 
     /* headers */
-    for (HeaderTemplate headerTemplate : this.headers.values()) {
+    for (HeaderTemplate headerTemplate : this.headers.values()) {  // 1
       variables.addAll(headerTemplate.getVariables());
     }
 
     /* body */
-    if (this.bodyTemplate != null) {
+    if (this.bodyTemplate != null) {  // 1
       variables.addAll(this.bodyTemplate.getVariables());
     }
 
@@ -590,8 +533,9 @@ public final class RequestTemplate implements Serializable {
   /**
    * @see RequestTemplate#query(String, Iterable)
    */
+  // 1
   public RequestTemplate query(String name, String... values) {
-    if (values == null) {
+    if (values == null) {  // 1
       return query(name, Collections.emptyList());
     }
     return query(name, Arrays.asList(values));
@@ -633,20 +577,21 @@ public final class RequestTemplate implements Serializable {
    * @param collectionFormat to use when resolving collection based query variables.
    * @return a RequestTemplate for chaining.
    */
+  // 4
   private RequestTemplate appendQuery(String name,
                                       Iterable<String> values,
                                       CollectionFormat collectionFormat) {
-    if (!values.iterator().hasNext()) {
+    if (!values.iterator().hasNext()) {  // 1
       /* empty value, clear the existing values */
       this.queries.remove(name);
       return this;
     }
 
     /* create a new query template out of the information here */
-    this.queries.compute(name, (key, queryTemplate) -> {
-      if (queryTemplate == null) {
+    this.queries.compute(name, (key, queryTemplate) -> {  // 1
+      if (queryTemplate == null) {  // 1
         return QueryTemplate.create(name, values, this.charset, collectionFormat, this.decodeSlash);
-      } else {
+      } else {  // 1
         return QueryTemplate.append(queryTemplate, values, collectionFormat, this.decodeSlash);
       }
     });
@@ -660,10 +605,11 @@ public final class RequestTemplate implements Serializable {
    * @return a RequestTemplate for chaining.
    */
   @SuppressWarnings("unused")
+  // 2
   public RequestTemplate queries(Map<String, Collection<String>> queries) {
-    if (queries == null || queries.isEmpty()) {
+    if (queries == null || queries.isEmpty()) {  // 1
       this.queries.clear();
-    } else {
+    } else {  // 1
       queries.forEach(this::query);
     }
     return this;
@@ -675,9 +621,10 @@ public final class RequestTemplate implements Serializable {
    *
    * @return registered Query Parameters.
    */
+  // 1
   public Map<String, Collection<String>> queries() {
     Map<String, Collection<String>> queryMap = new LinkedHashMap<>();
-    this.queries.forEach((key, queryTemplate) -> {
+    this.queries.forEach((key, queryTemplate) -> {  // 1
       List<String> values = new ArrayList<>(queryTemplate.getValues());
 
       /* add the expanded collection, but lock it */
@@ -701,8 +648,9 @@ public final class RequestTemplate implements Serializable {
    * @param chunks to add.
    * @return a RequestTemplate for chaining.
    */
-  private RequestTemplate header(String name, TemplateChunk... chunks) {
-    if (chunks == null) {
+  // 1
+  RequestTemplate header(String name, TemplateChunk... chunks) {
+    if (chunks == null) { // 1
       throw new IllegalArgumentException("chunks are required.");
     }
     return appendHeader(name, Arrays.asList(chunks));
@@ -715,11 +663,12 @@ public final class RequestTemplate implements Serializable {
    * @param values for this header.
    * @return a RequestTemplate for chaining.
    */
+  // 2
   public RequestTemplate header(String name, Iterable<String> values) {
-    if (name == null || name.isEmpty()) {
+    if (name == null || name.isEmpty()) { // 1
       throw new IllegalArgumentException("name is required.");
     }
-    if (values == null) {
+    if (values == null) { // 1
       values = Collections.emptyList();
     }
 
@@ -732,8 +681,9 @@ public final class RequestTemplate implements Serializable {
    * @param name of the header.
    * @return a RequestTemplate for chaining.
    */
+  // 1
   public RequestTemplate removeHeader(String name) {
-    if (name == null || name.isEmpty()) {
+    if (name == null || name.isEmpty()) { // 1
       throw new IllegalArgumentException("name is required.");
     }
     this.headers.remove(name);
@@ -747,13 +697,14 @@ public final class RequestTemplate implements Serializable {
    * @param values for the header, may be expressions.
    * @return a RequestTemplate for chaining.
    */
+  // 5
   private RequestTemplate appendHeader(String name, Iterable<String> values) {
-    if (!values.iterator().hasNext()) {
+    if (!values.iterator().hasNext()) { // 1
       /* empty value, clear the existing values */
       this.headers.remove(name);
       return this;
     }
-    if (name.equals("Content-Type")) {
+    if (name.equals("Content-Type")) { // 1
       // a client can only produce content of one single type, so always override Content-Type and
       // only add a single type
       this.headers.remove(name);
@@ -761,26 +712,26 @@ public final class RequestTemplate implements Serializable {
           HeaderTemplate.create(name, Collections.singletonList(values.iterator().next())));
       return this;
     }
-    this.headers.compute(name, (headerName, headerTemplate) -> {
-      if (headerTemplate == null) {
+    this.headers.compute(name, (headerName, headerTemplate) -> {  // 1
+      if (headerTemplate == null) { // 1
         return HeaderTemplate.create(headerName, values);
-      } else {
+      } else { // 1
         return HeaderTemplate.append(headerTemplate, values);
       }
     });
     return this;
   }
-
+  // 3
   private RequestTemplate appendHeader(String name, List<TemplateChunk> chunks) {
-    if (chunks.isEmpty()) {
+    if (chunks.isEmpty()) { // 1
       this.headers.remove(name);
       return this;
     }
 
     this.headers.compute(name, (headerName, headerTemplate) -> {
-      if (headerTemplate == null) {
+      if (headerTemplate == null) { // 1
         return HeaderTemplate.from(name, chunks);
-      } else {
+      } else { // 1
         return HeaderTemplate.appendFrom(headerTemplate, chunks);
       }
     });
@@ -793,10 +744,11 @@ public final class RequestTemplate implements Serializable {
    * @param headers to use.
    * @return a RequestTemplate for chaining.
    */
+  // 2
   public RequestTemplate headers(Map<String, Collection<String>> headers) {
-    if (headers != null && !headers.isEmpty()) {
+    if (headers != null && !headers.isEmpty()) { // 1
       headers.forEach(this::header);
-    } else {
+    } else { // 1
       this.headers.clear();
     }
     return this;
@@ -807,13 +759,14 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the currently applied headers.
    */
+  // 2
   public Map<String, Collection<String>> headers() {
     Map<String, Collection<String>> headerMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    this.headers.forEach((key, headerTemplate) -> {
+    this.headers.forEach((key, headerTemplate) -> { // 1
       List<String> values = new ArrayList<>(headerTemplate.getValues());
 
       /* add the expanded collection, but only if it has values */
-      if (!values.isEmpty()) {
+      if (!values.isEmpty()) { // 1
         headerMap.put(key, Collections.unmodifiableList(values));
       }
     });
@@ -851,6 +804,7 @@ public final class RequestTemplate implements Serializable {
    * @deprecated use {@link #body(byte[], Charset)} instead.
    */
   @Deprecated
+  // 1
   public RequestTemplate body(Request.Body body) {
     this.body = body;
 
@@ -858,7 +812,7 @@ public final class RequestTemplate implements Serializable {
     this.bodyTemplate = null;
 
     header(CONTENT_LENGTH, Collections.emptyList());
-    if (body.length() > 0) {
+    if (body.length() > 0) { // 1
       header(CONTENT_LENGTH, String.valueOf(body.length()));
     }
 
@@ -870,8 +824,9 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the currently applied Charset.
    */
+  // 1
   public Charset requestCharset() {
-    if (this.body != null) {
+    if (this.body != null) { // 1
       return this.body.getEncoding()
           .orElse(this.charset);
     }
@@ -927,8 +882,9 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the unresolved body template.
    */
+  // 1
   public String bodyTemplate() {
-    if (this.bodyTemplate != null) {
+    if (this.bodyTemplate != null) { //1
       return this.bodyTemplate.toString();
     }
     return null;
@@ -954,11 +910,12 @@ public final class RequestTemplate implements Serializable {
    *
    * @return a List of all the variable names.
    */
+  // 2
   public Collection<String> getRequestVariables() {
     final Collection<String> variables = new LinkedHashSet<>(this.uriTemplate.getVariables());
-    this.queries.values().forEach(queryTemplate -> variables.addAll(queryTemplate.getVariables()));
+    this.queries.values().forEach(queryTemplate -> variables.addAll(queryTemplate.getVariables())); // 1
     this.headers.values()
-        .forEach(headerTemplate -> variables.addAll(headerTemplate.getVariables()));
+        .forEach(headerTemplate -> variables.addAll(headerTemplate.getVariables())); // 1
     return variables;
   }
 
@@ -977,17 +934,18 @@ public final class RequestTemplate implements Serializable {
    *
    * @return the Query String.
    */
+  // 6
   public String queryLine() {
     StringBuilder queryString = new StringBuilder();
 
-    if (!this.queries.isEmpty()) {
+    if (!this.queries.isEmpty()) { // 1
       Iterator<QueryTemplate> iterator = this.queries.values().iterator();
-      while (iterator.hasNext()) {
+      while (iterator.hasNext()) { // 1
         QueryTemplate queryTemplate = iterator.next();
         String query = queryTemplate.toString();
-        if (query != null && !query.isEmpty()) {
+        if (query != null && !query.isEmpty()) { // 1
           queryString.append(query);
-          if (iterator.hasNext()) {
+          if (iterator.hasNext()) { // 1
             queryString.append("&");
           }
         }
@@ -995,40 +953,27 @@ public final class RequestTemplate implements Serializable {
     }
     /* remove any trailing ampersands */
     String result = queryString.toString();
-    if (result.endsWith("&")) {
+    if (result.endsWith("&")) { // 1
       result = result.substring(0, result.length() - 1);
     }
 
-    if (!result.isEmpty()) {
+    if (!result.isEmpty()) { // 1
       result = "?" + result;
     }
 
     return result;
   }
-
+  //3
   private void extractQueryTemplates(String queryString, boolean append) {
     /* split the query string up into name value pairs */
-    Map<String, List<String>> queryParameters =
-        Arrays.stream(queryString.split("&"))
-            .map(this::splitQueryParameter)
-            .collect(Collectors.groupingBy(
-                SimpleImmutableEntry::getKey,
-                LinkedHashMap::new,
-                Collectors.mapping(Entry::getValue, Collectors.toList())));
+    Map<String, List<String>> queryParameters = ExtractQueryTemplate.extract(queryString); // 1
 
     /* add them to this template */
-    if (!append) {
+    if (!append) { // 1
       /* clear the queries and use the new ones */
       this.queries.clear();
     }
-    queryParameters.forEach(this::query);
-  }
-
-  private SimpleImmutableEntry<String, String> splitQueryParameter(String pair) {
-    int eq = pair.indexOf("=");
-    final String name = (eq > 0) ? pair.substring(0, eq) : pair;
-    final String value = (eq > 0 && eq < pair.length()) ? pair.substring(eq + 1) : null;
-    return new SimpleImmutableEntry<>(name, value);
+    queryParameters.forEach(this::query); // 1
   }
 
   @Experimental
@@ -1063,5 +1008,145 @@ public final class RequestTemplate implements Serializable {
      */
     RequestTemplate create(Object[] argv);
   }
+}
 
+//9
+final class QueryResolver {
+  private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
+
+  public static void resolver(Map<String, QueryTemplate> queries, Map<String, ?> variables, RequestTemplate resolved, StringBuilder uri){ //2
+    if(queries == null || queries.isEmpty()) return ;//1
+    resolved.queries(Collections.emptyMap());
+    queries.values()
+            .stream()
+            .map(queryTemplate -> queryTemplate.expand(variables))// 1
+            .filter(Util::isNotBlank)// 1
+            .reduce((a, b) -> a + "&" + b) // 1
+            .ifPresent(query -> {
+              final String operator = QUERY_STRING_PATTERN.matcher(uri).find() ? "&" : "?"; //2
+              uri.append(operator);
+              uri.append(query);
+            });// 1
+  }
+}
+
+// 8
+final class  HeaderResolver {
+  public static void resolver(Map<String, HeaderTemplate> headers, Map<String, ?> variables, RequestTemplate resolved) { //1
+    if (headers == null || headers.isEmpty()) return;//1
+    resolved.headers(Collections.emptyMap());
+    headers.values()
+            .stream()
+            .map(headerTemplate -> new HeaderTemplateValue(headerTemplate, headerTemplate.expand(variables)))// 1
+            .map(HeaderTemplateValue::splitHeaderValue) // 1
+            .filter(Optional::isPresent) // 1
+            .map(Optional::get)// 1
+            .forEach(headerTemplateValue ->
+                    resolved.header(headerTemplateValue.getHeaderTemplate().getName(),
+                            Literal.create(headerTemplateValue.getValue())));// 1
+  }
+}
+
+// 3
+final class HeaderTemplateValue {
+  private final HeaderTemplate headerTemplate; //1
+  private final String value;
+
+  public HeaderTemplateValue(HeaderTemplate headerTemplate, String value) {
+    this.headerTemplate = headerTemplate;
+    this.value = value;
+  }
+
+  public Optional<HeaderTemplateValue> splitHeaderValue() {
+    if(value.isEmpty()) return Optional.empty(); // 1
+    final String newValue = value.substring(value.indexOf(" ") + 1);
+    if(newValue.isEmpty()) return Optional.empty(); // 1
+    return Optional.of(new HeaderTemplateValue(headerTemplate, newValue));
+  }
+
+  public HeaderTemplate getHeaderTemplate() {
+    return headerTemplate;
+  }
+
+  public String getValue() {
+    return value;
+  }
+}
+
+//7
+enum UriInitial {
+  BARRA("/"),
+  CHAVE("{"),
+  INTERROGACAO("?"),
+  PONTO_VIRGULA(";");
+
+  private final String value;
+
+  UriInitial(String value) {
+    this.value = value;
+  }
+
+  String getValue() {
+    return value;
+  }
+
+  public static String validate(String value){
+    if (UriUtils.isAbsolute(value)) { // 2
+      throw new IllegalArgumentException("url values must be not be absolute.");
+    }
+    if(value == null) return  BARRA.getValue(); // 1
+    if(value.isEmpty()
+            && Arrays.stream(UriInitial.values())
+            .map(UriInitial::getValue)
+            .noneMatch(value::startsWith)){ //4
+      return BARRA.getValue() + value;
+    }
+    return value;
+  }
+}
+
+// 6
+final class ExtractQueryTemplate {
+  public static Map<String, List<String>> extract(String queryString) {
+    /* split the query string up into name value pairs */
+    return Arrays.stream(queryString.split("&"))
+                    .map(ExtractQueryTemplate::splitQueryParameter) // 1
+                    .collect(Collectors.groupingBy( // 1
+                            SimpleImmutableEntry::getKey,
+                            LinkedHashMap::new,
+                            Collectors.mapping(Entry::getValue, Collectors.toList()))); // 3
+  }
+  // 1
+  private static SimpleImmutableEntry<String, String> splitQueryParameter(final String pair) {
+    final String[] split = pair.split("=");
+    if(split.length < 2) return new SimpleImmutableEntry<>(pair, null); //1
+    return new SimpleImmutableEntry<>(split[0], split[1]);
+  }
+}
+
+// 5
+final class TargetUtil {
+  public static Optional<URI> generateURI(final String value) throws IllegalArgumentException {
+    /* target can be empty */
+    if (Util.isBlank(value)) return Optional.empty(); // 1
+
+    /* verify that the target contains the scheme, host and port */
+    if (!UriUtils.isAbsolute(value)) //1
+      throw new IllegalArgumentException("target values must be absolute.");
+
+    final String target = removeLastChar(value);
+    try { // 1
+      /* parse the target */
+      return Optional.of(URI.create(target));
+    } catch (IllegalArgumentException iae) { // 1
+      /* the uri provided is not a valid one, we can't continue */
+      throw new IllegalArgumentException("Target is not a valid URI.", iae);
+    }
+
+  }
+
+  private static String removeLastChar(final String target){
+    if (target.endsWith("/"))  return target.substring(0, target.length() - 1); // 1
+    return target;
+  }
 }
