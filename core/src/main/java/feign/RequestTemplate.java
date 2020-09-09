@@ -14,11 +14,8 @@
 package feign;
 
 import feign.Request.HttpMethod;
-import feign.refactoring.ExtractQueryTemplate;
 import feign.refactoring.HeaderRequest;
-import feign.refactoring.HeaderResolver;
 import feign.refactoring.QueryRequest;
-import feign.refactoring.QueryResolver;
 import feign.refactoring.TargetUtil;
 import feign.refactoring.UriInitial;
 import feign.template.*;
@@ -42,10 +39,11 @@ import static feign.Util.*;
 @SuppressWarnings("UnusedReturnValue")
 
 //92
-//78 - reducao de 14
+// 78 - reducao de 14
 // 70 - reducao de 8 com classe QueryRequest
 // 62 - reducao de 8 com a classe HeaderRequest
 // 58 - removendo todas as tratativas de header para a classe HeaderRequest
+// 47 - removendo todas as tratativas de query para a classe QueryRequest
 public final class RequestTemplate implements Serializable {
   //9
   private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
@@ -118,7 +116,6 @@ public final class RequestTemplate implements Serializable {
    * @param requestTemplate to copy from.
    * @return a new Request Template.
    */
-  //1
   public static RequestTemplate from(RequestTemplate requestTemplate) {
     RequestTemplate template =
         new RequestTemplate(
@@ -133,10 +130,7 @@ public final class RequestTemplate implements Serializable {
             requestTemplate.collectionFormat,
             requestTemplate.methodMetadata,
             requestTemplate.feignTarget);
-
-    if (!requestTemplate.queries().isEmpty()) { //1
-      template.queryRequest.getQueries().putAll(requestTemplate.queryRequest.getQueries());
-    }
+    template.queryRequest.addAll(requestTemplate.queryRequest);
     template.headerRequest.addAll(requestTemplate.headerRequest);
     return template;
   }
@@ -154,7 +148,7 @@ public final class RequestTemplate implements Serializable {
     this.target = toCopy.target;
     this.fragment = toCopy.fragment;
     this.method = toCopy.method;
-    this.queryRequest.getQueries().putAll(toCopy.queryRequest.getQueries());
+    this.queryRequest.addAll(toCopy.queryRequest);
     this.headerRequest.addAll(toCopy.headerRequest);
     this.charset = toCopy.charset;
     this.body = toCopy.body;
@@ -176,7 +170,7 @@ public final class RequestTemplate implements Serializable {
    * @param variables containing the variable values to use when resolving expressions.
    * @return a new Request Template with all of the variables resolved.
    */
-  //4
+  //3
   public RequestTemplate resolve(Map<String, ?> variables) {
 
     StringBuilder uri = new StringBuilder();
@@ -198,7 +192,7 @@ public final class RequestTemplate implements Serializable {
      * for simplicity, combine the queries into the uri and use the resulting uri to seed the
      * resolved template.
      */
-    QueryResolver.resolver(this.queryRequest.getQueries(), variables, resolved, uri); // 1
+    this.queryRequest.resolver(variables, resolved, uri);
 
     /* add the uri to result */
     resolved.uri(uri.toString());
@@ -292,18 +286,11 @@ public final class RequestTemplate implements Serializable {
    * @param decodeSlash if slash literals should not be encoded.
    * @return a RequestTemplate for chaining.
    */
-  // 1
   public RequestTemplate decodeSlash(boolean decodeSlash) {
     this.decodeSlash = decodeSlash;
     this.uriTemplate =
         UriTemplate.create(this.uriTemplate.toString(), !this.decodeSlash, this.charset);
-    if (!this.queryRequest.getQueries().isEmpty()) { // 1
-      this.queryRequest.getQueries().replaceAll((key, queryTemplate) -> QueryTemplate.create(
-          /* replace the current template with new ones honoring the decode value */
-          queryTemplate.getName(), queryTemplate.getValues(), charset, collectionFormat,
-          decodeSlash));
-
-    }
+    this.queryRequest.decodeSlash(decodeSlash, charset, collectionFormat);
     return this;
   }
 
@@ -415,7 +402,7 @@ public final class RequestTemplate implements Serializable {
       String queryString = uri.substring(queryMatcher.start() + 1);
 
       /* parse the query string */
-      this.extractQueryTemplates(queryString, append);
+      queryRequest.extractQueryTemplates(this, queryString, append);
 
       /* reduce the uri to the path */
       uri = uri.substring(0, queryMatcher.start());
@@ -453,7 +440,7 @@ public final class RequestTemplate implements Serializable {
       /*
        * target has a query string, we need to make sure that they are recorded as queries
        */
-      this.extractQueryTemplates(targetUri.getRawQuery(), true);
+      queryRequest.extractQueryTemplates(this, targetUri.getRawQuery(), true);
     }
     /* strip the query string */
     this.target = targetUri.getScheme() + "://" + targetUri.getAuthority() + targetUri.getPath();
@@ -474,10 +461,8 @@ public final class RequestTemplate implements Serializable {
   public String url() {
 
     /* build the fully qualified url with all query parameters */
-    StringBuilder url = new StringBuilder(this.path());
-    if (!this.queryRequest.getQueries().isEmpty()) { // 1
-      url.append(this.queryLine());
-    }
+    final StringBuilder url = new StringBuilder(this.path());
+    url.append(this.queryLine());
     if (fragment != null) { // 1
       url.append(fragment);
     }
@@ -519,9 +504,7 @@ public final class RequestTemplate implements Serializable {
     List<String> variables = new ArrayList<>(this.uriTemplate.getVariables());
 
     /* queries */
-    for (QueryTemplate queryTemplate : this.queryRequest.getQueries().values()) {  // 1
-      variables.addAll(queryTemplate.getVariables());
-    }
+    variables.addAll(queryRequest.variables());
 
     /* headers */
     variables.addAll(headerRequest.variables());
@@ -581,24 +564,10 @@ public final class RequestTemplate implements Serializable {
    * @param collectionFormat to use when resolving collection based query variables.
    * @return a RequestTemplate for chaining.
    */
-  // 4
   private RequestTemplate appendQuery(String name,
                                       Iterable<String> values,
                                       CollectionFormat collectionFormat) {
-    if (!values.iterator().hasNext()) {  // 1
-      /* empty value, clear the existing values */
-      this.queryRequest.getQueries().remove(name);
-      return this;
-    }
-
-    /* create a new query template out of the information here */
-    this.queryRequest.getQueries().compute(name, (key, queryTemplate) -> {  // 1
-      if (queryTemplate == null) {  // 1
-        return QueryTemplate.create(name, values, this.charset, collectionFormat, this.decodeSlash);
-      } else {  // 1
-        return QueryTemplate.append(queryTemplate, values, collectionFormat, this.decodeSlash);
-      }
-    });
+    this.queryRequest.appendQuery(name, values, collectionFormat, charset, decodeSlash);
     return this;
   }
 
@@ -827,10 +796,9 @@ public final class RequestTemplate implements Serializable {
    *
    * @return a List of all the variable names.
    */
-  // 1
   public Collection<String> getRequestVariables() {
     final Collection<String> variables = new LinkedHashSet<>(this.uriTemplate.getVariables());
-    this.queryRequest.getQueries().values().forEach(queryTemplate -> variables.addAll(queryTemplate.getVariables())); // 1
+    variables.addAll(this.queryRequest.variables());
     variables.addAll(this.headerRequest.variables());
     return variables;
   }
@@ -851,19 +819,7 @@ public final class RequestTemplate implements Serializable {
    * @return the Query String.
    */
   public String queryLine() {
-    return queryRequest.queryLine();
-  }
-  //3
-  private void extractQueryTemplates(String queryString, boolean append) {
-    /* split the query string up into name value pairs */
-    Map<String, List<String>> queryParameters = ExtractQueryTemplate.extract(queryString); // 1
-
-    /* add them to this template */
-    if (!append) { // 1
-      /* clear the queries and use the new ones */
-      this.queryRequest.getQueries().clear();
-    }
-    queryParameters.forEach(this::query); // 1
+    return queryRequest.queryLine().orElse("");
   }
 
   @Experimental
