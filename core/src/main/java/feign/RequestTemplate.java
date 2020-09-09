@@ -45,6 +45,7 @@ import static feign.Util.*;
 //78 - reducao de 14
 // 70 - reducao de 8 com classe QueryRequest
 // 62 - reducao de 8 com a classe HeaderRequest
+// 58 - removendo todas as tratativas de header para a classe HeaderRequest
 public final class RequestTemplate implements Serializable {
   //9
   private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
@@ -117,7 +118,7 @@ public final class RequestTemplate implements Serializable {
    * @param requestTemplate to copy from.
    * @return a new Request Template.
    */
-  //2
+  //1
   public static RequestTemplate from(RequestTemplate requestTemplate) {
     RequestTemplate template =
         new RequestTemplate(
@@ -136,10 +137,7 @@ public final class RequestTemplate implements Serializable {
     if (!requestTemplate.queries().isEmpty()) { //1
       template.queryRequest.getQueries().putAll(requestTemplate.queryRequest.getQueries());
     }
-
-    if (!requestTemplate.headers().isEmpty()) { //1
-      template.headerRequest.getHeaders().putAll(requestTemplate.headerRequest.getHeaders());
-    }
+    template.headerRequest.addAll(requestTemplate.headerRequest);
     return template;
   }
 
@@ -157,7 +155,7 @@ public final class RequestTemplate implements Serializable {
     this.fragment = toCopy.fragment;
     this.method = toCopy.method;
     this.queryRequest.getQueries().putAll(toCopy.queryRequest.getQueries());
-    this.headerRequest.getHeaders().putAll(toCopy.headerRequest.getHeaders());
+    this.headerRequest.addAll(toCopy.headerRequest);
     this.charset = toCopy.charset;
     this.body = toCopy.body;
     this.decodeSlash = toCopy.decodeSlash;
@@ -178,7 +176,7 @@ public final class RequestTemplate implements Serializable {
    * @param variables containing the variable values to use when resolving expressions.
    * @return a new Request Template with all of the variables resolved.
    */
-  //5
+  //4
   public RequestTemplate resolve(Map<String, ?> variables) {
 
     StringBuilder uri = new StringBuilder();
@@ -206,7 +204,7 @@ public final class RequestTemplate implements Serializable {
     resolved.uri(uri.toString());
 
     /* headers */
-    HeaderResolver.resolver(this.headerRequest.getHeaders(), variables, resolved); // 1
+    this.headerRequest.resolver(variables, resolved);
 
     if (this.bodyTemplate != null) { //1
       resolved.body(this.bodyTemplate.expand(variables));
@@ -515,7 +513,7 @@ public final class RequestTemplate implements Serializable {
    *
    * @return a list of template variable names
    */
-  // 3
+  // 2
   public List<String> variables() {
     /* combine the variables from the uri, query, header, and body templates */
     List<String> variables = new ArrayList<>(this.uriTemplate.getVariables());
@@ -526,9 +524,7 @@ public final class RequestTemplate implements Serializable {
     }
 
     /* headers */
-    for (HeaderTemplate headerTemplate : this.headerRequest.getHeaders().values()) {  // 1
-      variables.addAll(headerTemplate.getVariables());
-    }
+    variables.addAll(headerRequest.variables());
 
     /* body */
     if (this.bodyTemplate != null) {  // 1
@@ -691,16 +687,7 @@ public final class RequestTemplate implements Serializable {
    */
   // 2
   public Map<String, Collection<String>> headers() {
-    Map<String, Collection<String>> headerMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    this.headerRequest.getHeaders().forEach((key, headerTemplate) -> { // 1
-      List<String> values = new ArrayList<>(headerTemplate.getValues());
-
-      /* add the expanded collection, but only if it has values */
-      if (!values.isEmpty()) { // 1
-        headerMap.put(key, Collections.unmodifiableList(values));
-      }
-    });
-    return Collections.unmodifiableMap(headerMap);
+    return this.headerRequest.headers();
   }
 
   /**
@@ -840,12 +827,11 @@ public final class RequestTemplate implements Serializable {
    *
    * @return a List of all the variable names.
    */
-  // 2
+  // 1
   public Collection<String> getRequestVariables() {
     final Collection<String> variables = new LinkedHashSet<>(this.uriTemplate.getVariables());
     this.queryRequest.getQueries().values().forEach(queryTemplate -> variables.addAll(queryTemplate.getVariables())); // 1
-    this.headerRequest.getHeaders().values()
-        .forEach(headerTemplate -> variables.addAll(headerTemplate.getVariables())); // 1
+    variables.addAll(this.headerRequest.variables());
     return variables;
   }
 
