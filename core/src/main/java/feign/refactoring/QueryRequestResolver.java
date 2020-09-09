@@ -9,10 +9,10 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 //9
-public class QueryResolver {
+public class QueryRequestResolver {
     private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
 
-    public static void resolver(Map<String, QueryTemplate> queries, Map<String, ?> variables, RequestTemplate resolved, StringBuilder uri){ //2
+    static void resolver(Map<String, QueryTemplate> queries, Map<String, ?> variables, RequestTemplate resolved, StringBuilder uri){ //2
         if(queries == null || queries.isEmpty()) return ;//1
         resolved.queries(Collections.emptyMap());
         queries.values()

@@ -581,7 +581,8 @@ public final class RequestTemplate implements Serializable {
    */
   @SuppressWarnings("unused")
   public RequestTemplate queries(Map<String, Collection<String>> queries) {
-    return queryRequest.queries(this, queries);
+    queryRequest.queries(this, queries);
+    return this;
   }
 
 

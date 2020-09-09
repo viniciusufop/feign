@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-// 15
+// 13
 public final class HeaderRequest {
     private final Map<String, HeaderTemplate> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER); //1
     // 1
@@ -21,13 +21,9 @@ public final class HeaderRequest {
             headers.putAll(headerRequest.headers);
         }
     }
-    // 3
+    // 1
     public List<String> variables(){
-        return headers.values()
-                .stream()
-                .map(HeaderTemplate::getVariables)// 1
-                .reduce((a, b) -> {a.addAll(b); return a;})// 1
-                .orElse(new ArrayList<>());// 1
+        return VariableUtils.extractHeaderVariables(headers); // 1
     }
 
     /**

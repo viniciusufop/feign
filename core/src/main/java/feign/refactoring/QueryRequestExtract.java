@@ -8,12 +8,12 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 // 6
-public final class ExtractQueryTemplate {
+public final class QueryRequestExtract {
 
-    public static Map<String, List<String>> extract(String queryString) {
+    static Map<String, List<String>> extract(String queryString) {
         /* split the query string up into name value pairs */
         return Arrays.stream(queryString.split("&"))
-                .map(ExtractQueryTemplate::splitQueryParameter) // 1
+                .map(QueryRequestExtract::splitQueryParameter) // 1
                 .collect(Collectors.groupingBy( // 1
                         AbstractMap.SimpleImmutableEntry::getKey,
                         LinkedHashMap::new,
