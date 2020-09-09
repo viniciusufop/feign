@@ -44,6 +44,7 @@ import static feign.Util.*;
 // 62 - reducao de 8 com a classe HeaderRequest
 // 58 - removendo todas as tratativas de header para a classe HeaderRequest
 // 47 - removendo todas as tratativas de query para a classe QueryRequest
+// 45 - removendo duplicidade da validacao do collectionFormat
 public final class RequestTemplate implements Serializable {
   //9
   private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
@@ -84,7 +85,6 @@ public final class RequestTemplate implements Serializable {
    * @param feignTarget this template is targeted for.
    * @param methodMetadata containing a reference to the method this template is built from.
    */
-  //2
   private RequestTemplate(String target,
       String fragment,
       UriTemplate uriTemplate,
@@ -104,8 +104,7 @@ public final class RequestTemplate implements Serializable {
     this.charset = charset;
     this.body = body;
     this.decodeSlash = decodeSlash;
-    this.collectionFormat =
-        (collectionFormat != null) ? collectionFormat : CollectionFormat.EXPLODED; //2
+    this.collectionFormat = selectCollectionFormat(collectionFormat);
     this.methodMetadata = methodMetadata;
     this.feignTarget = feignTarget;
   }
@@ -142,7 +141,6 @@ public final class RequestTemplate implements Serializable {
    * @deprecated replaced by {@link RequestTemplate#from(RequestTemplate)}
    */
   @Deprecated
-  //2
   public RequestTemplate(RequestTemplate toCopy) {
     checkNotNull(toCopy, "toCopy");
     this.target = toCopy.target;
@@ -153,14 +151,18 @@ public final class RequestTemplate implements Serializable {
     this.charset = toCopy.charset;
     this.body = toCopy.body;
     this.decodeSlash = toCopy.decodeSlash;
-    this.collectionFormat =
-        (toCopy.collectionFormat != null) ? toCopy.collectionFormat : CollectionFormat.EXPLODED; //2
+    this.collectionFormat = selectCollectionFormat(toCopy.collectionFormat);
     this.uriTemplate = toCopy.uriTemplate;
     this.bodyTemplate = toCopy.bodyTemplate;
     this.resolved = false;
     this.methodMetadata = toCopy.methodMetadata;
     this.target = toCopy.target;
     this.feignTarget = toCopy.feignTarget;
+  }
+
+  // 2
+  private CollectionFormat selectCollectionFormat(CollectionFormat collectionFormat){
+    return collectionFormat != null ? collectionFormat : CollectionFormat.EXPLODED;
   }
 
   /**
