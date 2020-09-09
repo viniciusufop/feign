@@ -40,11 +40,12 @@ import static feign.Util.*;
 //92
 //78 - reducao de 14
 // 70 - reducao de 8 com classe QueryRequest
+// 62 - reducao de 8 com a classe HeaderRequest
 public final class RequestTemplate implements Serializable {
   //9
   private static final Pattern QUERY_STRING_PATTERN = Pattern.compile("(?<!\\{)\\?");
   private final QueryRequest queryRequest = new QueryRequest(); // 1
-  private final Map<String, HeaderTemplate> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER); //1
+  private final HeaderRequest headerRequest = new HeaderRequest();//1
   private String target;
   private String fragment;
   private boolean resolved = false;
@@ -133,7 +134,7 @@ public final class RequestTemplate implements Serializable {
     }
 
     if (!requestTemplate.headers().isEmpty()) { //1
-      template.headers.putAll(requestTemplate.headers);
+      template.headerRequest.getHeaders().putAll(requestTemplate.headerRequest.getHeaders());
     }
     return template;
   }
@@ -145,13 +146,14 @@ public final class RequestTemplate implements Serializable {
    * @deprecated replaced by {@link RequestTemplate#from(RequestTemplate)}
    */
   @Deprecated
+  //2
   public RequestTemplate(RequestTemplate toCopy) {
     checkNotNull(toCopy, "toCopy");
     this.target = toCopy.target;
     this.fragment = toCopy.fragment;
     this.method = toCopy.method;
     this.queryRequest.getQueries().putAll(toCopy.queryRequest.getQueries());
-    this.headers.putAll(toCopy.headers);
+    this.headerRequest.getHeaders().putAll(toCopy.headerRequest.getHeaders());
     this.charset = toCopy.charset;
     this.body = toCopy.body;
     this.decodeSlash = toCopy.decodeSlash;
@@ -200,7 +202,7 @@ public final class RequestTemplate implements Serializable {
     resolved.uri(uri.toString());
 
     /* headers */
-    HeaderResolver.resolver(this.headers, variables, resolved); // 1
+    HeaderResolver.resolver(this.headerRequest.getHeaders(), variables, resolved); // 1
 
     if (this.bodyTemplate != null) { //1
       resolved.body(this.bodyTemplate.expand(variables));
@@ -234,6 +236,7 @@ public final class RequestTemplate implements Serializable {
    * @return a new Request instance.
    * @throws IllegalStateException if this template has not been resolved.
    */
+  //1
   public Request request() {
     if (!this.resolved) { // 1
       throw new IllegalStateException("template has not been resolved.");
@@ -519,7 +522,7 @@ public final class RequestTemplate implements Serializable {
     }
 
     /* headers */
-    for (HeaderTemplate headerTemplate : this.headers.values()) {  // 1
+    for (HeaderTemplate headerTemplate : this.headerRequest.getHeaders().values()) {  // 1
       variables.addAll(headerTemplate.getVariables());
     }
 
@@ -635,12 +638,9 @@ public final class RequestTemplate implements Serializable {
    * @param chunks to add.
    * @return a RequestTemplate for chaining.
    */
-  // 1
   RequestTemplate header(String name, TemplateChunk... chunks) {
-    if (chunks == null) { // 1
-      throw new IllegalArgumentException("chunks are required.");
-    }
-    return appendHeader(name, Arrays.asList(chunks));
+    headerRequest.header(name, chunks);
+    return this;
   }
 
   /**
@@ -652,14 +652,8 @@ public final class RequestTemplate implements Serializable {
    */
   // 2
   public RequestTemplate header(String name, Iterable<String> values) {
-    if (name == null || name.isEmpty()) { // 1
-      throw new IllegalArgumentException("name is required.");
-    }
-    if (values == null) { // 1
-      values = Collections.emptyList();
-    }
-
-    return appendHeader(name, values);
+    headerRequest.header(name, values);
+    return this;
   }
 
   /**
@@ -670,58 +664,7 @@ public final class RequestTemplate implements Serializable {
    */
   // 1
   public RequestTemplate removeHeader(String name) {
-    if (name == null || name.isEmpty()) { // 1
-      throw new IllegalArgumentException("name is required.");
-    }
-    this.headers.remove(name);
-    return this;
-  }
-
-  /**
-   * Create a Header Template.
-   *
-   * @param name of the header
-   * @param values for the header, may be expressions.
-   * @return a RequestTemplate for chaining.
-   */
-  // 5
-  private RequestTemplate appendHeader(String name, Iterable<String> values) {
-    if (!values.iterator().hasNext()) { // 1
-      /* empty value, clear the existing values */
-      this.headers.remove(name);
-      return this;
-    }
-    if (name.equals("Content-Type")) { // 1
-      // a client can only produce content of one single type, so always override Content-Type and
-      // only add a single type
-      this.headers.remove(name);
-      this.headers.put(name,
-          HeaderTemplate.create(name, Collections.singletonList(values.iterator().next())));
-      return this;
-    }
-    this.headers.compute(name, (headerName, headerTemplate) -> {  // 1
-      if (headerTemplate == null) { // 1
-        return HeaderTemplate.create(headerName, values);
-      } else { // 1
-        return HeaderTemplate.append(headerTemplate, values);
-      }
-    });
-    return this;
-  }
-  // 3
-  private RequestTemplate appendHeader(String name, List<TemplateChunk> chunks) {
-    if (chunks.isEmpty()) { // 1
-      this.headers.remove(name);
-      return this;
-    }
-
-    this.headers.compute(name, (headerName, headerTemplate) -> {
-      if (headerTemplate == null) { // 1
-        return HeaderTemplate.from(name, chunks);
-      } else { // 1
-        return HeaderTemplate.appendFrom(headerTemplate, chunks);
-      }
-    });
+    this.headerRequest.removeHeader(name);
     return this;
   }
 
@@ -733,11 +676,7 @@ public final class RequestTemplate implements Serializable {
    */
   // 2
   public RequestTemplate headers(Map<String, Collection<String>> headers) {
-    if (headers != null && !headers.isEmpty()) { // 1
-      headers.forEach(this::header);
-    } else { // 1
-      this.headers.clear();
-    }
+    this.headerRequest.headers(headers);
     return this;
   }
 
@@ -749,7 +688,7 @@ public final class RequestTemplate implements Serializable {
   // 2
   public Map<String, Collection<String>> headers() {
     Map<String, Collection<String>> headerMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    this.headers.forEach((key, headerTemplate) -> { // 1
+    this.headerRequest.getHeaders().forEach((key, headerTemplate) -> { // 1
       List<String> values = new ArrayList<>(headerTemplate.getValues());
 
       /* add the expanded collection, but only if it has values */
@@ -901,7 +840,7 @@ public final class RequestTemplate implements Serializable {
   public Collection<String> getRequestVariables() {
     final Collection<String> variables = new LinkedHashSet<>(this.uriTemplate.getVariables());
     this.queryRequest.getQueries().values().forEach(queryTemplate -> variables.addAll(queryTemplate.getVariables())); // 1
-    this.headers.values()
+    this.headerRequest.getHeaders().values()
         .forEach(headerTemplate -> variables.addAll(headerTemplate.getVariables())); // 1
     return variables;
   }
@@ -969,6 +908,133 @@ public final class RequestTemplate implements Serializable {
      */
     RequestTemplate create(Object[] argv);
   }
+
+}
+
+// 9
+final class HeaderRequest {
+  private final Map<String, HeaderTemplate> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER); //1
+
+  public Map<String, HeaderTemplate> getHeaders() {
+    return headers;
+  }
+  /**
+   * Add a header using the supplied Chunks.
+   *
+   * @param name of the header.
+   * @param chunks to add.
+   * @return a RequestTemplate for chaining.
+   */
+  //2
+  public void header(String name, TemplateChunk... chunks) { // 1
+    if (chunks == null) {// 1
+      throw new IllegalArgumentException("chunks are required.");
+    }
+    AppendHeaderRequest.appendHeader(headers, name, Arrays.asList(chunks));
+  }
+
+  /**
+   * Specify a Header, with the specified values. Values can be literals or template expressions.
+   *
+   * @param name of the header.
+   * @param values for this header.
+   * @return a RequestTemplate for chaining.
+   */
+  // 2
+  public void header(String name, Iterable<String> values) {
+    validateName(name);
+    if (values == null) { // 1
+      values = Collections.emptyList();
+    }
+    AppendHeaderRequest.appendHeader(headers, name, values);
+  }
+
+  /**
+   * Clear on reader from {@link RequestTemplate}
+   *
+   * @param name of the header.
+   * @return a RequestTemplate for chaining.
+   */
+  // 1
+  public void removeHeader(String name) {
+    validateName(name);
+    this.headers.remove(name);
+  }
+  //1
+  private void validateName(final String name){
+    if (name == null || name.isEmpty()) { // 1
+      throw new IllegalArgumentException("name is required.");
+    }
+  }
+
+  /**
+   * Headers for this Request.
+   *
+   * @param headers to use.
+   * @return a RequestTemplate for chaining.
+   */
+  // 2
+  public void headers(Map<String, Collection<String>> headers) {
+    if (headers != null && !headers.isEmpty()) { // 1
+      headers.forEach(this::header);
+    } else { // 1
+      this.headers.clear();
+    }
+  }
+}
+
+//9
+final class AppendHeaderRequest {
+
+  /**
+   * Create a Header Template.
+   *
+   * @param name of the header
+   * @param values for the header, may be expressions.
+   * @return a RequestTemplate for chaining.
+   */
+
+  // 3
+  public static void appendHeader(final Map<String, HeaderTemplate> headers, final String name, final Iterable<String> values) {
+    if (!values.iterator().hasNext()) { // 1
+      /* empty value, clear the existing values */
+      headers.remove(name);
+    }
+    if (name.equals("Content-Type")) { // 1
+      // a client can only produce content of one single type, so always override Content-Type and
+      // only add a single type
+      headers.remove(name);
+      headers.put(name,
+              HeaderTemplate.create(name, Collections.singletonList(values.iterator().next())));
+    }
+    headers.compute(name, (headerName, headerTemplate) -> returnHeaderTemplate(headerTemplate, headerName, values)); // 1
+  }
+
+  //2
+  private static HeaderTemplate returnHeaderTemplate(final HeaderTemplate headerTemplate, final String name, final Iterable<String> values){
+    if (headerTemplate == null) { // 1
+      return HeaderTemplate.create(name, values);
+    } else { // 1
+      return HeaderTemplate.append(headerTemplate, values);
+    }
+  }
+
+  // 2
+  public static void appendHeader(final Map<String, HeaderTemplate> headers, final String name, final List<TemplateChunk> chunks) {
+    if (chunks.isEmpty()) { // 1
+      headers.remove(name);
+    }
+    headers.compute(name, (headerName, headerTemplate) -> returnHeaderTemplate(headerTemplate, name, chunks)); // 1
+  }
+
+  // 2
+  private static HeaderTemplate returnHeaderTemplate(final HeaderTemplate headerTemplate, final String name, final List<TemplateChunk> chunks){
+    if (headerTemplate == null) { // 1
+      return HeaderTemplate.from(name, chunks);
+    } else { // 1
+      return HeaderTemplate.appendFrom(headerTemplate, chunks);
+    }
+  }
 }
 
 // 8
@@ -1017,7 +1083,6 @@ final class QueryRequest {
     }
     return "?" + result;
   }
-
 }
 
 //9
