@@ -5,15 +5,13 @@ import feign.RequestTemplate;
 import feign.template.QueryTemplate;
 
 import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// 19
+// 13
 public final class QueryRequest {
     private final Map<String, QueryTemplate> queries = new LinkedHashMap<>();
     // 1
@@ -27,25 +25,11 @@ public final class QueryRequest {
     public List<String> variables(){
         return VariableUtils.extractQueryVariables(queries); // 1
     }
-    // 4
+    // 1
     public void appendQuery(String name,Iterable<String> values,CollectionFormat collectionFormat,
                             Charset charset, boolean decodeSlash) {
-        if (!values.iterator().hasNext()) {  // 1
-            /* empty value, clear the existing values */
-            this.queries.remove(name);
-            return;
-        }
-
-        /* create a new query template out of the information here */
-        this.queries.compute(name, (key, queryTemplate) -> {  // 1
-            if (queryTemplate == null) {  // 1
-                return QueryTemplate.create(name, values, charset, collectionFormat, decodeSlash);
-            } else {  // 1
-                return QueryTemplate.append(queryTemplate, values, collectionFormat, decodeSlash);
-            }
-        });
+        QueryRequestAppend.appendQuery(queries, name, values, collectionFormat, charset, decodeSlash); // 1
     }
-
     //3
     public void extractQueryTemplates(RequestTemplate requestTemplate, String queryString, boolean append) {
         /* split the query string up into name value pairs */
@@ -58,25 +42,13 @@ public final class QueryRequest {
         }
         queryParameters.forEach(requestTemplate::query); // 1
     }
-
-    // 3
+    // 1
     public void queries(final RequestTemplate requestTemplate, final Map<String, Collection<String>> queries) {
-        if (queries == null || queries.isEmpty()) {  // 1
-            this.queries.clear();
-        } else {  // 1
-            queries.forEach(requestTemplate::query); // 1
-        }
+        QueryUtils.queries(this.queries, requestTemplate, queries);
     }
 
-    // 1
     public Map<String, Collection<String>> queries() {
-        Map<String, Collection<String>> queryMap = new LinkedHashMap<>();
-        this.queries.forEach((key, queryTemplate) -> {  // 1
-            final List<String> values = new ArrayList<>(queryTemplate.getValues());
-            /* add the expanded collection, but lock it */
-            queryMap.put(key, Collections.unmodifiableList(values));
-        });
-        return Collections.unmodifiableMap(queryMap);
+        return QueryUtils.queries(queries);
     }
     // 1
     public Optional<String> queryLine() {
@@ -93,7 +65,6 @@ public final class QueryRequest {
                     /* replace the current template with new ones honoring the decode value */
                     queryTemplate.getName(), queryTemplate.getValues(), charset, collectionFormat,
                     decodeSlash)); //1
-
         }
     }
 }
